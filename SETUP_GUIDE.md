@@ -76,17 +76,24 @@
 
 ## Шаг 3: Получение ID проекта
 
-### 3.1 Создайте Personal Access Token (если проект приватный)
-1. Перейдите на https://github.com/settings/tokens/new
-2. Выберите права: `project` (Full control)
-3. Создайте токен
+### Для проектов организации:
+```bash
+gh api graphql -f query='query {
+  organization(login: "YOUR_ORG_NAME") {
+    projectsV2(first: 20) {
+      nodes {
+        id
+        title
+        url
+      }
+    }
+  }
+}'
+```
 
-### 3.2 Найдите Project ID
-Используйте GitHub Action (как мы сделали) или GraphQL Explorer:
-1. https://docs.github.com/en/graphql/overview/explorer
-2. Выполните запрос:
-```graphql
-{
+### Для личных проектов:
+```bash
+gh api graphql -f query='query {
   viewer {
     projectsV2(first: 20) {
       nodes {
@@ -96,8 +103,10 @@
       }
     }
   }
-}
+}'
 ```
+
+Найдите ваш проект в списке и скопируйте его ID (начинается с `PVT_`).
 
 ## Шаг 4: Настройка приложения
 
