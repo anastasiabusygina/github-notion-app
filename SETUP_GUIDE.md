@@ -46,19 +46,30 @@
 2. Заполните:
    - **GitHub App name**: уникальное имя
    - **Homepage URL**: любой URL (например, https://github.com)
-   - **Webhook URL**: временно укажите https://example.com
-   - **Webhook secret**: придумайте пароль
+   - **Webhook**: 
+     - ✅ **Active** - обязательно включите!
+     - **Webhook URL**: временно укажите https://example.com
+     - **Webhook secret**: можно оставить пустым
 
 ### 2.2 Настройте права доступа
+**ВАЖНО**: Права нужно настроить в двух разделах!
+
 В разделе **Repository permissions**:
 - **Issues**: Read
 - **Projects**: Read
+- **Metadata**: Read (обычно включено автоматически)
 
-В разделе **Subscribe to events**:
-- ✅ Projects v2 item
-- ✅ Project card (опционально)
+В разделе **Organization permissions**:
+- **Projects**: Read (обязательно для проектов организации!)
 
-### 2.3 Создайте приложение
+### 2.3 Выберите события для вебхуков
+В разделе **Subscribe to events** включите:
+- ✅ **Projects v2 item** (обязательно!)
+- ✅ **Projects v2** 
+- ✅ **Issues**
+- ✅ **Meta**
+
+### 2.4 Создайте приложение и сохраните ключи
 1. Нажмите "Create GitHub App"
 2. Сохраните **App ID**
 3. Нажмите "Generate a private key" - скачается .pem файл
