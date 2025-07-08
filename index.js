@@ -31,9 +31,16 @@ app.use(express.json());
 
 // Webhook endpoint
 app.post('/webhook', async (req, res) => {
+  console.log('Received webhook:', {
+    event: req.headers['x-github-event'],
+    delivery: req.headers['x-github-delivery'],
+    signature: req.headers['x-hub-signature-256'] ? 'present' : 'missing'
+  });
+  
   const signature = req.headers['x-hub-signature-256'];
   
   if (!signature) {
+    console.error('Missing signature header');
     return res.status(401).send('Missing signature');
   }
 
@@ -45,6 +52,7 @@ app.post('/webhook', async (req, res) => {
       payload: JSON.stringify(req.body),
     });
     
+    console.log('Webhook processed successfully');
     res.status(200).send('OK');
   } catch (error) {
     console.error('Webhook verification failed:', error);
@@ -70,6 +78,8 @@ webhooks.on(['project_card.created', 'project_card.moved', 'project_card.deleted
 // Handle projects_v2_item events
 webhooks.on(['projects_v2_item.created', 'projects_v2_item.edited', 'projects_v2_item.deleted'], async ({ payload }) => {
   console.log(`Received ${payload.action} event for project v2 item`);
+  console.log('Installation ID:', payload.installation?.id);
+  console.log('Project ID:', payload.projects_v2_item?.project_node_id);
   
   try {
     const installation = await githubApp.getInstallationOctokit(payload.installation.id);
