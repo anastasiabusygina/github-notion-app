@@ -1,114 +1,105 @@
-# github-notion-app
+# GitHub Projects → Notion Sync
 
-# Техническое задание: GitHub Projects → Notion Sync
+A GitHub App that synchronizes tasks from GitHub Projects (v2) to a Notion database.
 
-## Цель
-Создать GitHub App для синхронизации задач из GitHub Projects в базу данных Notion.
+## Features
 
-## Что синхронизировать
+- Real-time synchronization of GitHub Project items to Notion
+- Tracks project-specific status (not issue state)
+- Webhook support for automatic updates
+- Manual sync capability
+- Support for GitHub Projects v2 GraphQL API
 
-### Из GitHub Projects:
-- Задачи (issues) привязанные к проекту
-- **Статус задачи в проекте** (Todo, In Progress, Done и т.д.)
-- Дата добавления в проект
-- Дата перемещения между колонками статусов
-- Данные самой задачи (заголовок, описание, номер)
+## Prerequisites
 
-### В Notion создать поля:
-```yaml
-Title: заголовок задачи
-Issue Number: номер
-Project Status: статус из проекта (не из issue!)
-Added to Project: дата добавления в проект
-Status Updated: дата последнего изменения статуса
-Repository: репозиторий задачи
-Project Name: название проекта
-GitHub URL: ссылка на задачу
-GitHub ID: уникальный ID
+1. A GitHub App with the following permissions:
+   - Issues: Read
+   - Projects: Read
+   
+2. Webhook events configured:
+   - `projects_v2_item` (created, edited, deleted)
+   - `project_card` (created, moved, deleted) - for legacy support
+
+3. A Notion integration and database with these properties:
+   - **Title** (title) - Issue title
+   - **Issue Number** (number) - Issue number
+   - **Project Status** (select) - Status from project columns
+   - **Added to Project** (date) - When added to project
+   - **Status Updated** (date) - Last status change
+   - **Repository** (rich_text) - Repository name
+   - **Project Name** (rich_text) - Project name
+   - **GitHub URL** (url) - Link to issue
+   - **GitHub ID** (rich_text) - Unique identifier
+
+## Installation
+
+1. Clone the repository:
+```bash
+git clone git@github.com:anastasiabusygina/github-notion-app.git
+cd github-notion-app
 ```
 
-## GitHub App настройки
-
-### Permissions:
-- Issues: Read
-- Projects: Read
-
-### Webhook events:
-- Project card (created, moved, deleted)
-- Issues (для отслеживания изменений в самих задачах)
-
-## Логика работы
-
-```python
-# Получить данные из GitHub Projects (v2)
-def fetch_project_items():
-    # Используем GraphQL API для Projects v2
-    query = """
-    {
-      node(id: "PROJECT_ID") {
-        ... on ProjectV2 {
-          items(first: 100) {
-            nodes {
-              id
-              content {
-                ... on Issue {
-                  number
-                  title
-                  body
-                  repository {
-                    name
-                  }
-                }
-              }
-              fieldValues(first: 10) {
-                nodes {
-                  ... on ProjectV2ItemFieldSingleSelectValue {
-                    name  # Status: Todo, In Progress, Done
-                    field {
-                      ... on ProjectV2SingleSelectField {
-                        name
-                      }
-                    }
-                  }
-                  ... on ProjectV2ItemFieldDateValue {
-                    date
-                    field {
-                      ... on ProjectV2Field {
-                        name
-                      }
-                    }
-                  }
-                }
-              }
-              createdAt
-              updatedAt
-            }
-          }
-        }
-      }
-    }
-    """
-    
-# Синхронизация в Notion
-def sync_project_item_to_notion(item):
-    status = get_item_status(item)  # Получить статус из fieldValues
-    
-    data = {
-        'title': item.content.title,
-        'number': item.content.number,
-        'project_status': status,  # Todo/In Progress/Done
-        'added_date': item.createdAt,
-        'status_updated': item.updatedAt,
-        'repository': item.content.repository.name,
-        'project_name': project.name
-    }
+2. Install dependencies:
+```bash
+npm install
 ```
 
-## Важно
-- Статусы берутся из **колонок проекта**, а не из состояния issue
-- Используется GitHub Projects v2 API (GraphQL)
-- При перемещении задачи между колонками - обновляется статус в Notion
+3. Copy `.env.example` to `.env` and fill in your credentials:
+```bash
+cp .env.example .env
+```
 
----
+4. Configure environment variables:
+   - `GITHUB_APP_ID` - Your GitHub App ID
+   - `GITHUB_APP_PRIVATE_KEY` - Your GitHub App private key
+   - `GITHUB_WEBHOOK_SECRET` - Your webhook secret
+   - `NOTION_API_KEY` - Your Notion integration token
+   - `NOTION_DATABASE_ID` - Your Notion database ID
+   - `GITHUB_PROJECT_ID` - The node ID of your GitHub Project (v2)
+   - `PORT` - Server port (default: 3000)
 
-Только синхронизация задач из GitHub Projects со статусами проекта.
+## Usage
+
+### Start the webhook server:
+```bash
+npm start
+```
+
+### Development mode (with auto-reload):
+```bash
+npm run dev
+```
+
+### Manual sync:
+```bash
+node sync-project.js <installation-id>
+```
+
+## How it works
+
+1. The app listens for GitHub webhook events on `/webhook`
+2. When a project item is created, moved, or deleted:
+   - Fetches full item details using GitHub GraphQL API
+   - Extracts the project-specific status (from project columns)
+   - Creates or updates the corresponding entry in Notion
+3. Supports pagination for large projects
+4. Handles both creation and updates based on GitHub ID
+
+## API Endpoints
+
+- `POST /webhook` - GitHub webhook endpoint
+- `GET /health` - Health check endpoint
+
+## Architecture
+
+- `index.js` - Main application with webhook handlers
+- `sync-project.js` - Manual sync utility
+- Uses GitHub Projects v2 GraphQL API
+- Notion API for database operations
+
+## Important Notes
+
+- This app specifically syncs **project column status**, not issue state
+- Designed for GitHub Projects v2 (not classic projects)
+- Uses GraphQL for efficient data fetching
+- Supports real-time updates via webhooks
