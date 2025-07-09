@@ -11,11 +11,12 @@ A GitHub App that synchronizes tasks from GitHub Projects (v2) to a Notion datab
 - Support for GitHub Projects v2 GraphQL API
 - **Auto-creates Notion database schema** from GitHub Project structure
 - **Syncs ALL project fields** including custom fields:
-  - Date fields (Start date, End date, any custom dates)
+  - Date fields (Start date + End date → Timeline for date ranges)
   - Select fields (Priority, Size, custom dropdowns)
   - Number fields (Estimate, custom numbers)
   - Text fields (custom text)
 - Fields are synced by name - no special naming required
+- **Special handling for Timeline view**: Start date and End date from GitHub are combined into a single Timeline field in Notion
 
 ## Prerequisites
 
@@ -61,9 +62,9 @@ These fields exist in every GitHub Project by default:
 These are popular fields often added to projects (optional):
 - **Priority** (select) - P0, P1, P2, etc.
 - **Size** (select) - XS, S, M, L, XL
-- **Start date** (date) - Planned start date
-- **End date** (date) - Planned end date
+- **Timeline** (date range) - Combined from Start date + End date for Notion's Timeline view
 - **Estimate** (number) - Time/effort estimation
+- **Start date** and **End date** from GitHub Projects are automatically combined into Timeline field
 
 ### 4. Your Custom Fields
 Any custom fields you add to your GitHub Project are automatically synced:
