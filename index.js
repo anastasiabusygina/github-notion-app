@@ -324,6 +324,33 @@ async function syncProjectItem(octokit, payload) {
     const status = getItemStatus(item);
     const githubId = `${item.content.repository.owner.login}/${item.content.repository.name}#${item.content.number}`;
     
+    // Extract all field values from the project item
+    const projectFieldValues = {};
+    if (item.fieldValues && item.fieldValues.nodes) {
+      for (const fieldValue of item.fieldValues.nodes) {
+        if (fieldValue.field && fieldValue.field.name) {
+          const fieldName = fieldValue.field.name;
+          
+          // Handle date fields
+          if (fieldValue.date) {
+            projectFieldValues[fieldName] = {
+              date: {
+                start: fieldValue.date
+              }
+            };
+          }
+          // Handle select fields
+          else if (fieldValue.name) {
+            projectFieldValues[fieldName] = {
+              select: {
+                name: fieldValue.name
+              }
+            };
+          }
+        }
+      }
+    }
+    
     const notionData = {
       'Title': {
         title: [
@@ -383,6 +410,9 @@ async function syncProjectItem(octokit, payload) {
         ],
       },
     };
+    
+    // Add project field values to notion data
+    Object.assign(notionData, projectFieldValues);
     
     // Check if item exists in Notion
     const existingPages = await notion.databases.query({
