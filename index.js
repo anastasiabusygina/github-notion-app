@@ -89,6 +89,124 @@ webhooks.on(['projects_v2_item.created', 'projects_v2_item.edited', 'projects_v2
   }
 });
 
+// Function to fetch project fields schema
+async function fetchProjectFields(octokit, projectId) {
+  const query = `
+    query($projectId: ID!) {
+      node(id: $projectId) {
+        ... on ProjectV2 {
+          fields(first: 50) {
+            nodes {
+              ... on ProjectV2Field {
+                id
+                name
+                dataType
+              }
+              ... on ProjectV2SingleSelectField {
+                id
+                name
+                dataType
+                options {
+                  id
+                  name
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  `;
+  
+  const result = await octokit.graphql(query, { projectId });
+  return result.node.fields.nodes;
+}
+
+// Map GitHub field types to Notion property types
+function mapGitHubTypeToNotion(githubType) {
+  const typeMap = {
+    'SINGLE_SELECT': 'select',
+    'DATE': 'date',
+    'NUMBER': 'number',
+    'TITLE': 'title',
+    'TEXT': 'rich_text',
+  };
+  return typeMap[githubType] || 'rich_text';
+}
+
+// Function to ensure Notion database has all required fields
+async function ensureNotionSchema(projectFields) {
+  try {
+    // Get existing Notion database schema
+    const database = await notion.databases.retrieve({
+      database_id: process.env.NOTION_DATABASE_ID,
+    });
+    
+    const existingProperties = Object.keys(database.properties);
+    console.log('Existing Notion properties:', existingProperties);
+    
+    // Fields to create
+    const fieldsToCreate = {};
+    
+    // Add our custom fields that are always needed
+    const customFields = {
+      'Issue Number': { type: 'number' },
+      'Project Status': { type: 'select', options: [] },
+      'Added to Project': { type: 'date' },
+      'Status Updated': { type: 'date' },
+      'Repository': { type: 'rich_text' },
+      'Project Name': { type: 'rich_text' },
+      'GitHub URL': { type: 'url' },
+      'GitHub ID': { type: 'rich_text' },
+    };
+    
+    // Check custom fields
+    for (const [fieldName, fieldConfig] of Object.entries(customFields)) {
+      if (!existingProperties.includes(fieldName)) {
+        fieldsToCreate[fieldName] = fieldConfig;
+      }
+    }
+    
+    // Check GitHub project fields
+    for (const field of projectFields) {
+      if (field.name && field.dataType && !existingProperties.includes(field.name)) {
+        const notionType = mapGitHubTypeToNotion(field.dataType);
+        
+        if (notionType === 'select' && field.options) {
+          fieldsToCreate[field.name] = {
+            type: 'select',
+            select: {
+              options: field.options.map(opt => ({
+                name: opt.name,
+                color: 'default'
+              }))
+            }
+          };
+        } else if (notionType !== 'title') { // Skip title as it already exists
+          fieldsToCreate[field.name] = { type: notionType };
+        }
+      }
+    }
+    
+    // Create missing fields
+    if (Object.keys(fieldsToCreate).length > 0) {
+      console.log('Creating missing fields:', Object.keys(fieldsToCreate));
+      
+      await notion.databases.update({
+        database_id: process.env.NOTION_DATABASE_ID,
+        properties: fieldsToCreate,
+      });
+      
+      console.log('Successfully created missing fields');
+    } else {
+      console.log('All required fields already exist');
+    }
+    
+  } catch (error) {
+    console.error('Error ensuring Notion schema:', error);
+  }
+}
+
 // Function to fetch project item details using GraphQL
 async function fetchProjectItem(octokit, itemId) {
   const query = `
@@ -298,7 +416,38 @@ app.get('/health', (req, res) => {
   res.json({ status: 'healthy' });
 });
 
+// Initialize schema on startup
+async function initializeSchema() {
+  try {
+    console.log('Initializing Notion database schema...');
+    
+    // Get any installation to use for API calls
+    const installations = await githubApp.eachInstallation();
+    if (installations.length === 0) {
+      console.log('No installations found, skipping schema initialization');
+      return;
+    }
+    
+    // Use first installation
+    const installation = installations[0];
+    const octokit = await githubApp.getInstallationOctokit(installation.installation.id);
+    
+    // Fetch project fields
+    const projectFields = await fetchProjectFields(octokit, process.env.GITHUB_PROJECT_ID);
+    console.log(`Found ${projectFields.length} fields in GitHub Project`);
+    
+    // Ensure Notion has all fields
+    await ensureNotionSchema(projectFields);
+    
+  } catch (error) {
+    console.error('Error initializing schema:', error);
+  }
+}
+
 // Start server
-app.listen(port, () => {
+app.listen(port, async () => {
   console.log(`GitHub-Notion sync app listening on port ${port}`);
+  
+  // Initialize schema after server starts
+  setTimeout(initializeSchema, 2000);
 });
