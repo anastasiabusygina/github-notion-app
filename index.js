@@ -265,6 +265,22 @@ async function fetchProjectItem(octokit, itemId) {
                   }
                 }
               }
+              ... on ProjectV2ItemFieldNumberValue {
+                number
+                field {
+                  ... on ProjectV2Field {
+                    name
+                  }
+                }
+              }
+              ... on ProjectV2ItemFieldTextValue {
+                text
+                field {
+                  ... on ProjectV2Field {
+                    name
+                  }
+                }
+              }
             }
           }
           createdAt
@@ -327,9 +343,11 @@ async function syncProjectItem(octokit, payload) {
     // Extract all field values from the project item
     const projectFieldValues = {};
     if (item.fieldValues && item.fieldValues.nodes) {
+      console.log('Field values found:', item.fieldValues.nodes.length);
       for (const fieldValue of item.fieldValues.nodes) {
         if (fieldValue.field && fieldValue.field.name) {
           const fieldName = fieldValue.field.name;
+          console.log(`Processing field: ${fieldName}`, fieldValue);
           
           // Handle date fields
           if (fieldValue.date) {
@@ -338,6 +356,7 @@ async function syncProjectItem(octokit, payload) {
                 start: fieldValue.date
               }
             };
+            console.log(`Added date field ${fieldName}: ${fieldValue.date}`);
           }
           // Handle select fields
           else if (fieldValue.name) {
@@ -346,10 +365,32 @@ async function syncProjectItem(octokit, payload) {
                 name: fieldValue.name
               }
             };
+            console.log(`Added select field ${fieldName}: ${fieldValue.name}`);
+          }
+          // Handle number fields
+          else if (fieldValue.number !== undefined) {
+            projectFieldValues[fieldName] = {
+              number: fieldValue.number
+            };
+            console.log(`Added number field ${fieldName}: ${fieldValue.number}`);
+          }
+          // Handle text fields
+          else if (fieldValue.text) {
+            projectFieldValues[fieldName] = {
+              rich_text: [
+                {
+                  text: {
+                    content: fieldValue.text
+                  }
+                }
+              ]
+            };
+            console.log(`Added text field ${fieldName}: ${fieldValue.text}`);
           }
         }
       }
     }
+    console.log('All project field values:', projectFieldValues);
     
     const notionData = {
       'Title': {

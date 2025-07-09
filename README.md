@@ -9,6 +9,13 @@ A GitHub App that synchronizes tasks from GitHub Projects (v2) to a Notion datab
 - Webhook support for automatic updates
 - Manual sync capability
 - Support for GitHub Projects v2 GraphQL API
+- **Auto-creates Notion database schema** from GitHub Project structure
+- **Syncs ALL project fields** including custom fields:
+  - Date fields (Start date, End date, any custom dates)
+  - Select fields (Priority, Size, custom dropdowns)
+  - Number fields (Estimate, custom numbers)
+  - Text fields (custom text)
+- Fields are synced by name - no special naming required
 
 ## Prerequisites
 
@@ -20,16 +27,52 @@ A GitHub App that synchronizes tasks from GitHub Projects (v2) to a Notion datab
    - `projects_v2_item` (created, edited, deleted)
    - `project_card` (created, moved, deleted) - for legacy support
 
-3. A Notion integration and database with these properties:
-   - **Title** (title) - Issue title
-   - **Issue Number** (number) - Issue number
-   - **Project Status** (select) - Status from project columns
-   - **Added to Project** (date) - When added to project
-   - **Status Updated** (date) - Last status change
-   - **Repository** (rich_text) - Repository name
-   - **Project Name** (rich_text) - Project name
-   - **GitHub URL** (url) - Link to issue
-   - **GitHub ID** (rich_text) - Unique identifier
+3. A Notion integration and database:
+   - Start with an empty database (just the default "Name" field)
+   - The app automatically creates ALL fields from your GitHub Project
+   - No specific field names required - it syncs whatever you have!
+
+## How Fields Are Synced
+
+The app creates different types of fields in your Notion database:
+
+### 1. System Fields (Always Created)
+These fields are created by the app for tracking:
+- **Name** - Issue title
+- **Issue Number** - GitHub issue number
+- **GitHub ID** - Unique identifier (owner/repo#number)
+- **GitHub URL** - Direct link to the issue
+- **Repository** - Repository name
+- **Project Name** - GitHub Project name
+- **Added to Project** - When the issue was added to the project
+- **Status Updated** - Last status change timestamp
+- **Project Status** - Current project column/status
+
+### 2. Default GitHub Project Fields
+These fields exist in every GitHub Project by default:
+- **Status** - Project columns (Todo, In Progress, Done, etc.)
+- **Assignees** - Who the issue is assigned to
+- **Labels** - Issue labels
+- **Milestone** - Issue milestone
+- **Linked pull requests** - Associated PRs
+- **Title** - Issue title (mapped to Name)
+
+### 3. Common Custom Fields
+These are popular fields often added to projects (optional):
+- **Priority** (select) - P0, P1, P2, etc.
+- **Size** (select) - XS, S, M, L, XL
+- **Start date** (date) - Planned start date
+- **End date** (date) - Planned end date
+- **Estimate** (number) - Time/effort estimation
+
+### 4. Your Custom Fields
+Any custom fields you add to your GitHub Project are automatically synced:
+- Date fields (any name)
+- Select fields with custom options
+- Number fields
+- Text fields
+
+All fields from categories 2, 3, and 4 are dynamically pulled from your GitHub Project configuration!
 
 ## Installation
 
