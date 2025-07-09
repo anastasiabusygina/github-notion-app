@@ -349,6 +349,11 @@ async function syncProjectItem(octokit, payload) {
           const fieldName = fieldValue.field.name;
           console.log(`Processing field: ${fieldName}`, fieldValue);
           
+          // Skip Title field as it's handled separately as Name
+          if (fieldName === 'Title') {
+            continue;
+          }
+          
           // Handle date fields
           if (fieldValue.date) {
             projectFieldValues[fieldName] = {
@@ -393,7 +398,7 @@ async function syncProjectItem(octokit, payload) {
     console.log('All project field values:', projectFieldValues);
     
     const notionData = {
-      'Title': {
+      'Name': {
         title: [
           {
             text: {
