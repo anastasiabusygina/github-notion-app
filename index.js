@@ -10,6 +10,9 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 3000;
 
+// Flag to track if schema has been initialized
+let schemaInitialized = false;
+
 // Initialize GitHub App
 const githubApp = new App({
   appId: process.env.GITHUB_APP_ID,
@@ -83,6 +86,15 @@ webhooks.on(['projects_v2_item.created', 'projects_v2_item.edited', 'projects_v2
   
   try {
     const installation = await githubApp.getInstallationOctokit(payload.installation.id);
+    
+    // Initialize schema on first webhook if not done yet
+    if (!schemaInitialized) {
+      console.log('First webhook received, initializing schema...');
+      const projectFields = await fetchProjectFields(installation, process.env.GITHUB_PROJECT_ID);
+      await ensureNotionSchema(projectFields);
+      schemaInitialized = true;
+    }
+    
     await syncProjectItem(installation, payload);
   } catch (error) {
     console.error('Error handling webhook:', error);
@@ -150,14 +162,14 @@ async function ensureNotionSchema(projectFields) {
     
     // Add our custom fields that are always needed
     const customFields = {
-      'Issue Number': { type: 'number' },
-      'Project Status': { type: 'select', options: [] },
-      'Added to Project': { type: 'date' },
-      'Status Updated': { type: 'date' },
-      'Repository': { type: 'rich_text' },
-      'Project Name': { type: 'rich_text' },
-      'GitHub URL': { type: 'url' },
-      'GitHub ID': { type: 'rich_text' },
+      'Issue Number': { type: 'number', number: {} },
+      'Project Status': { type: 'select', select: { options: [] } },
+      'Added to Project': { type: 'date', date: {} },
+      'Status Updated': { type: 'date', date: {} },
+      'Repository': { type: 'rich_text', rich_text: {} },
+      'Project Name': { type: 'rich_text', rich_text: {} },
+      'GitHub URL': { type: 'url', url: {} },
+      'GitHub ID': { type: 'rich_text', rich_text: {} },
     };
     
     // Check custom fields
@@ -183,7 +195,10 @@ async function ensureNotionSchema(projectFields) {
             }
           };
         } else if (notionType !== 'title') { // Skip title as it already exists
-          fieldsToCreate[field.name] = { type: notionType };
+          fieldsToCreate[field.name] = { 
+            type: notionType,
+            [notionType]: {} 
+          };
         }
       }
     }
@@ -416,38 +431,8 @@ app.get('/health', (req, res) => {
   res.json({ status: 'healthy' });
 });
 
-// Initialize schema on startup
-async function initializeSchema() {
-  try {
-    console.log('Initializing Notion database schema...');
-    
-    // Get any installation to use for API calls
-    const installations = await githubApp.eachInstallation();
-    if (installations.length === 0) {
-      console.log('No installations found, skipping schema initialization');
-      return;
-    }
-    
-    // Use first installation
-    const installation = installations[0];
-    const octokit = await githubApp.getInstallationOctokit(installation.installation.id);
-    
-    // Fetch project fields
-    const projectFields = await fetchProjectFields(octokit, process.env.GITHUB_PROJECT_ID);
-    console.log(`Found ${projectFields.length} fields in GitHub Project`);
-    
-    // Ensure Notion has all fields
-    await ensureNotionSchema(projectFields);
-    
-  } catch (error) {
-    console.error('Error initializing schema:', error);
-  }
-}
 
 // Start server
-app.listen(port, async () => {
+app.listen(port, () => {
   console.log(`GitHub-Notion sync app listening on port ${port}`);
-  
-  // Initialize schema after server starts
-  setTimeout(initializeSchema, 2000);
 });
