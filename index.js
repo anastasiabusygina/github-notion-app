@@ -179,9 +179,24 @@ async function ensureNotionSchema(projectFields) {
       }
     }
     
+    // Check if we need Timeline field for date ranges
+    const hasStartDate = projectFields.some(f => f.name === 'Start date' && f.dataType === 'DATE');
+    const hasEndDate = projectFields.some(f => f.name === 'End date' && f.dataType === 'DATE');
+    if ((hasStartDate || hasEndDate) && !existingProperties.includes('Timeline')) {
+      fieldsToCreate['Timeline'] = { 
+        type: 'date',
+        date: {} 
+      };
+    }
+    
     // Check GitHub project fields
     for (const field of projectFields) {
       if (field.name && field.dataType && !existingProperties.includes(field.name)) {
+        // Skip Start date and End date as they'll be combined in Timeline
+        if (field.name === 'Start date' || field.name === 'End date') {
+          continue;
+        }
+        
         const notionType = mapGitHubTypeToNotion(field.dataType);
         
         if (notionType === 'select' && field.options) {
@@ -265,6 +280,22 @@ async function fetchProjectItem(octokit, itemId) {
                   }
                 }
               }
+              ... on ProjectV2ItemFieldNumberValue {
+                number
+                field {
+                  ... on ProjectV2Field {
+                    name
+                  }
+                }
+              }
+              ... on ProjectV2ItemFieldTextValue {
+                text
+                field {
+                  ... on ProjectV2Field {
+                    name
+                  }
+                }
+              }
             }
           }
           createdAt
@@ -324,8 +355,101 @@ async function syncProjectItem(octokit, payload) {
     const status = getItemStatus(item);
     const githubId = `${item.content.repository.owner.login}/${item.content.repository.name}#${item.content.number}`;
     
+    // Extract all field values from the project item
+    const projectFieldValues = {};
+    let startDate = null;
+    let endDate = null;
+    
+    if (item.fieldValues && item.fieldValues.nodes) {
+      console.log('Field values found:', item.fieldValues.nodes.length);
+      for (const fieldValue of item.fieldValues.nodes) {
+        if (fieldValue.field && fieldValue.field.name) {
+          const fieldName = fieldValue.field.name;
+          console.log(`Processing field: ${fieldName}`, fieldValue);
+          
+          // Skip Title field as it's handled separately as Name
+          if (fieldName === 'Title') {
+            continue;
+          }
+          
+          // Handle Start date and End date separately for Timeline
+          if (fieldName === 'Start date' && fieldValue.date) {
+            startDate = fieldValue.date;
+            console.log(`Found start date: ${startDate}`);
+            continue;
+          }
+          if (fieldName === 'End date' && fieldValue.date) {
+            endDate = fieldValue.date;
+            console.log(`Found end date: ${endDate}`);
+            continue;
+          }
+          
+          // Handle other date fields
+          if (fieldValue.date) {
+            projectFieldValues[fieldName] = {
+              date: {
+                start: fieldValue.date
+              }
+            };
+            console.log(`Added date field ${fieldName}: ${fieldValue.date}`);
+          }
+          // Handle select fields
+          else if (fieldValue.name) {
+            projectFieldValues[fieldName] = {
+              select: {
+                name: fieldValue.name
+              }
+            };
+            console.log(`Added select field ${fieldName}: ${fieldValue.name}`);
+          }
+          // Handle number fields
+          else if (fieldValue.number !== undefined) {
+            projectFieldValues[fieldName] = {
+              number: fieldValue.number
+            };
+            console.log(`Added number field ${fieldName}: ${fieldValue.number}`);
+          }
+          // Handle text fields
+          else if (fieldValue.text) {
+            projectFieldValues[fieldName] = {
+              rich_text: [
+                {
+                  text: {
+                    content: fieldValue.text
+                  }
+                }
+              ]
+            };
+            console.log(`Added text field ${fieldName}: ${fieldValue.text}`);
+          }
+        }
+      }
+    }
+    console.log('All project field values:', projectFieldValues);
+    
+    // Add Timeline field if we have start or end date
+    if (startDate || endDate) {
+      const timelineData = {
+        date: {}
+      };
+      
+      if (startDate) {
+        timelineData.date.start = startDate;
+      }
+      
+      if (endDate && startDate) {
+        timelineData.date.end = endDate;
+      } else if (endDate) {
+        // If only end date, use it as start date
+        timelineData.date.start = endDate;
+      }
+      
+      projectFieldValues['Timeline'] = timelineData;
+      console.log('Added Timeline field:', timelineData);
+    }
+    
     const notionData = {
-      'Title': {
+      'Name': {
         title: [
           {
             text: {
@@ -383,6 +507,9 @@ async function syncProjectItem(octokit, payload) {
         ],
       },
     };
+    
+    // Add project field values to notion data
+    Object.assign(notionData, projectFieldValues);
     
     // Check if item exists in Notion
     const existingPages = await notion.databases.query({
