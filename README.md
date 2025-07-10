@@ -101,6 +101,7 @@ cp .env.example .env
    - `NOTION_DATABASE_ID` - Your Notion database ID
    - `GITHUB_PROJECT_ID` - The node ID of your GitHub Project (v2)
    - `PORT` - Server port (default: 3000)
+   - `LOG_LEVEL` - Logging level (error, warn, info, debug) (default: info)
 
 ## Usage
 
@@ -140,6 +141,19 @@ node sync-project.js <installation-id>
 - `sync-project.js` - Manual sync utility
 - Uses GitHub Projects v2 GraphQL API
 - Notion API for database operations
+
+## Logging
+
+The application uses structured logging with Winston. Log files are automatically created in the `logs/` directory:
+
+- `logs/all.log` - All log messages
+- `logs/error.log` - Error messages only
+
+You can control the logging level with the `LOG_LEVEL` environment variable:
+- `error` - Only errors
+- `warn` - Warnings and errors
+- `info` - Info, warnings, and errors (default)
+- `debug` - All messages including debug information
 
 ## Important Notes
 

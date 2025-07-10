@@ -1,6 +1,7 @@
 import { App } from '@octokit/app';
 import { Client as NotionClient } from '@notionhq/client';
 import dotenv from 'dotenv';
+import logger from './logger.js';
 
 dotenv.config();
 
@@ -86,7 +87,7 @@ async function fetchAllProjectItems(octokit, projectId) {
     hasNextPage = project.items.pageInfo.hasNextPage;
     cursor = project.items.pageInfo.endCursor;
     
-    console.log(`Fetched ${allItems.length} items from project "${project.title}"`);
+    logger.info(`Fetched ${allItems.length} items from project "${project.title}"`);
   }
   
   return allItems;
@@ -112,14 +113,14 @@ async function syncProjectToNotion(installationId) {
   try {
     const octokit = await githubApp.getInstallationOctokit(installationId);
     
-    console.log('Fetching project items...');
+    logger.info('Fetching project items...');
     const items = await fetchAllProjectItems(octokit, process.env.GITHUB_PROJECT_ID);
     
-    console.log(`Found ${items.length} items to sync`);
+    logger.info(`Found ${items.length} items to sync`);
     
     for (const item of items) {
       if (!item.content) {
-        console.log('Skipping item without content');
+        logger.warn('Skipping item without content');
         continue;
       }
       
@@ -203,20 +204,20 @@ async function syncProjectToNotion(installationId) {
           page_id: existingPages.results[0].id,
           properties: notionData,
         });
-        console.log(`Updated: ${githubId}`);
+        logger.info(`Updated: ${githubId}`);
       } else {
         // Create new
         await notion.pages.create({
           parent: { database_id: process.env.NOTION_DATABASE_ID },
           properties: notionData,
         });
-        console.log(`Created: ${githubId}`);
+        logger.info(`Created: ${githubId}`);
       }
     }
     
-    console.log('Sync completed!');
+    logger.info('Sync completed!');
   } catch (error) {
-    console.error('Sync failed:', error);
+    logger.error('Sync failed', { error: error.message, stack: error.stack });
   }
 }
 
@@ -225,5 +226,5 @@ if (process.argv[2]) {
   const installationId = process.argv[2];
   syncProjectToNotion(installationId);
 } else {
-  console.log('Usage: node sync-project.js <installation-id>');
+  logger.error('Usage: node sync-project.js <installation-id>');
 }

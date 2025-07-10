@@ -4,6 +4,7 @@ import { Webhooks } from '@octokit/webhooks';
 import { Client as NotionClient } from '@notionhq/client';
 import { graphql } from '@octokit/graphql';
 import dotenv from 'dotenv';
+import logger from './logger.js';
 
 dotenv.config();
 
@@ -34,7 +35,7 @@ app.use(express.json());
 
 // Webhook endpoint
 app.post('/webhook', async (req, res) => {
-  console.log('Received webhook:', {
+  logger.info('Received webhook', {
     event: req.headers['x-github-event'],
     delivery: req.headers['x-github-delivery'],
     signature: req.headers['x-hub-signature-256'] ? 'present' : 'missing'
@@ -43,7 +44,7 @@ app.post('/webhook', async (req, res) => {
   const signature = req.headers['x-hub-signature-256'];
   
   if (!signature) {
-    console.error('Missing signature header');
+    logger.error('Missing signature header');
     return res.status(401).send('Missing signature');
   }
 
@@ -55,17 +56,17 @@ app.post('/webhook', async (req, res) => {
       payload: JSON.stringify(req.body),
     });
     
-    console.log('Webhook processed successfully');
+    logger.info('Webhook processed successfully');
     res.status(200).send('OK');
   } catch (error) {
-    console.error('Webhook verification failed:', error);
+    logger.error('Webhook verification failed', { error: error.message, stack: error.stack });
     res.status(401).send('Unauthorized');
   }
 });
 
 // Handle project_card events
 webhooks.on(['project_card.created', 'project_card.moved', 'project_card.deleted'], async ({ payload }) => {
-  console.log(`Received ${payload.action} event for project card`);
+  logger.info(`Received ${payload.action} event for project card`);
   
   try {
     // For Projects v2, we need to use GraphQL API
@@ -74,22 +75,23 @@ webhooks.on(['project_card.created', 'project_card.moved', 'project_card.deleted
     // Sync the project item
     await syncProjectItem(installation, payload);
   } catch (error) {
-    console.error('Error handling webhook:', error);
+    logger.error('Error handling webhook', { error: error.message, stack: error.stack });
   }
 });
 
 // Handle projects_v2_item events
 webhooks.on(['projects_v2_item.created', 'projects_v2_item.edited', 'projects_v2_item.deleted'], async ({ payload }) => {
-  console.log(`Received ${payload.action} event for project v2 item`);
-  console.log('Installation ID:', payload.installation?.id);
-  console.log('Project ID:', payload.projects_v2_item?.project_node_id);
+  logger.info(`Received ${payload.action} event for project v2 item`, {
+    installationId: payload.installation?.id,
+    projectId: payload.projects_v2_item?.project_node_id
+  });
   
   try {
     const installation = await githubApp.getInstallationOctokit(payload.installation.id);
     
     // Initialize schema on first webhook if not done yet
     if (!schemaInitialized) {
-      console.log('First webhook received, initializing schema...');
+      logger.info('First webhook received, initializing schema...');
       const projectFields = await fetchProjectFields(installation, process.env.GITHUB_PROJECT_ID);
       await ensureNotionSchema(projectFields);
       schemaInitialized = true;
@@ -97,7 +99,7 @@ webhooks.on(['projects_v2_item.created', 'projects_v2_item.edited', 'projects_v2
     
     await syncProjectItem(installation, payload);
   } catch (error) {
-    console.error('Error handling webhook:', error);
+    logger.error('Error handling webhook', { error: error.message, stack: error.stack });
   }
 });
 
@@ -155,7 +157,7 @@ async function ensureNotionSchema(projectFields) {
     });
     
     const existingProperties = Object.keys(database.properties);
-    console.log('Existing Notion properties:', existingProperties);
+    logger.debug('Existing Notion properties', { properties: existingProperties });
     
     // Fields to create
     const fieldsToCreate = {};
@@ -220,20 +222,20 @@ async function ensureNotionSchema(projectFields) {
     
     // Create missing fields
     if (Object.keys(fieldsToCreate).length > 0) {
-      console.log('Creating missing fields:', Object.keys(fieldsToCreate));
+      logger.info('Creating missing fields', { fields: Object.keys(fieldsToCreate) });
       
       await notion.databases.update({
         database_id: process.env.NOTION_DATABASE_ID,
         properties: fieldsToCreate,
       });
       
-      console.log('Successfully created missing fields');
+      logger.info('Successfully created missing fields');
     } else {
-      console.log('All required fields already exist');
+      logger.info('All required fields already exist');
     }
     
   } catch (error) {
-    console.error('Error ensuring Notion schema:', error);
+    logger.error('Error ensuring Notion schema', { error: error.message, stack: error.stack });
   }
 }
 
@@ -334,12 +336,12 @@ async function syncProjectItem(octokit, payload) {
       itemId = payload.projects_v2_item.node_id;
     } else if (payload.project_card) {
       // For legacy project cards, we need to handle differently
-      console.log('Legacy project card events are not fully supported');
+      logger.warn('Legacy project card events are not fully supported');
       return;
     }
     
     if (!itemId) {
-      console.error('No item ID found in payload');
+      logger.error('No item ID found in payload', { payload });
       return;
     }
     
@@ -347,7 +349,7 @@ async function syncProjectItem(octokit, payload) {
     const item = await fetchProjectItem(octokit, itemId);
     
     if (!item || !item.content) {
-      console.log('No content found for item');
+      logger.warn('No content found for item', { itemId });
       return;
     }
     
@@ -361,11 +363,11 @@ async function syncProjectItem(octokit, payload) {
     let endDate = null;
     
     if (item.fieldValues && item.fieldValues.nodes) {
-      console.log('Field values found:', item.fieldValues.nodes.length);
+      logger.debug('Field values found', { count: item.fieldValues.nodes.length });
       for (const fieldValue of item.fieldValues.nodes) {
         if (fieldValue.field && fieldValue.field.name) {
           const fieldName = fieldValue.field.name;
-          console.log(`Processing field: ${fieldName}`, fieldValue);
+          logger.debug(`Processing field: ${fieldName}`, { fieldValue });
           
           // Skip Title field as it's handled separately as Name
           if (fieldName === 'Title') {
@@ -375,12 +377,12 @@ async function syncProjectItem(octokit, payload) {
           // Handle Start date and End date separately for Timeline
           if (fieldName === 'Start date' && fieldValue.date) {
             startDate = fieldValue.date;
-            console.log(`Found start date: ${startDate}`);
+            logger.debug(`Found start date: ${startDate}`);
             continue;
           }
           if (fieldName === 'End date' && fieldValue.date) {
             endDate = fieldValue.date;
-            console.log(`Found end date: ${endDate}`);
+            logger.debug(`Found end date: ${endDate}`);
             continue;
           }
           
@@ -391,7 +393,7 @@ async function syncProjectItem(octokit, payload) {
                 start: fieldValue.date
               }
             };
-            console.log(`Added date field ${fieldName}: ${fieldValue.date}`);
+            logger.debug(`Added date field ${fieldName}: ${fieldValue.date}`);
           }
           // Handle select fields
           else if (fieldValue.name) {
@@ -400,14 +402,14 @@ async function syncProjectItem(octokit, payload) {
                 name: fieldValue.name
               }
             };
-            console.log(`Added select field ${fieldName}: ${fieldValue.name}`);
+            logger.debug(`Added select field ${fieldName}: ${fieldValue.name}`);
           }
           // Handle number fields
           else if (fieldValue.number !== undefined) {
             projectFieldValues[fieldName] = {
               number: fieldValue.number
             };
-            console.log(`Added number field ${fieldName}: ${fieldValue.number}`);
+            logger.debug(`Added number field ${fieldName}: ${fieldValue.number}`);
           }
           // Handle text fields
           else if (fieldValue.text) {
@@ -420,12 +422,12 @@ async function syncProjectItem(octokit, payload) {
                 }
               ]
             };
-            console.log(`Added text field ${fieldName}: ${fieldValue.text}`);
+            logger.debug(`Added text field ${fieldName}: ${fieldValue.text}`);
           }
         }
       }
     }
-    console.log('All project field values:', projectFieldValues);
+    logger.debug('All project field values', { projectFieldValues });
     
     // Add Timeline field if we have start or end date
     if (startDate || endDate) {
@@ -445,7 +447,7 @@ async function syncProjectItem(octokit, payload) {
       }
       
       projectFieldValues['Timeline'] = timelineData;
-      console.log('Added Timeline field:', timelineData);
+      logger.debug('Added Timeline field', { timelineData });
     }
     
     const notionData = {
@@ -529,7 +531,7 @@ async function syncProjectItem(octokit, payload) {
           page_id: existingPages.results[0].id,
           archived: true,
         });
-        console.log(`Deleted item ${githubId} from Notion`);
+        logger.info(`Deleted item ${githubId} from Notion`);
       }
     } else {
       if (existingPages.results.length > 0) {
@@ -538,18 +540,18 @@ async function syncProjectItem(octokit, payload) {
           page_id: existingPages.results[0].id,
           properties: notionData,
         });
-        console.log(`Updated item ${githubId} in Notion`);
+        logger.info(`Updated item ${githubId} in Notion`);
       } else {
         // Create new page
         await notion.pages.create({
           parent: { database_id: process.env.NOTION_DATABASE_ID },
           properties: notionData,
         });
-        console.log(`Created item ${githubId} in Notion`);
+        logger.info(`Created item ${githubId} in Notion`);
       }
     }
   } catch (error) {
-    console.error('Error syncing to Notion:', error);
+    logger.error('Error syncing to Notion', { error: error.message, stack: error.stack });
   }
 }
 
@@ -561,5 +563,5 @@ app.get('/health', (req, res) => {
 
 // Start server
 app.listen(port, () => {
-  console.log(`GitHub-Notion sync app listening on port ${port}`);
+  logger.info(`GitHub-Notion sync app listening on port ${port}`);
 });
